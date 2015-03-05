@@ -24,31 +24,14 @@ type Tokens struct {
   T []Token
 }
 
-func GetToken(w http.ResponseWriter, r *http.Request) string {
 
+/*
+  Generates a random token
+*/
+func GetToken(w http.ResponseWriter, r *http.Request) string {
   gob.Register(Tokens{})
 
-  // Number of random bytes to generate
-  n := 500
-	b := make([]byte, n)
-
-  // Read in from random
-	_, err := rand.Read(b)
-
-  // Check error
-	if err != nil {
-		fmt.Println("error:", err)
-		return ""
-	}
-
-  // Generate sha512 hash
-  hash := sha512.New()
-  hash.Write(b)
-
-  token := hex.EncodeToString(hash.Sum(nil))
-
   session, _ := sessionStore.Get(r, "token")
-
   session.Options = &sessions.Options{
       Path:     "/",
       MaxAge:   60 * 60 * 2,
@@ -77,21 +60,62 @@ func GetToken(w http.ResponseWriter, r *http.Request) string {
 }
 
 
-func CheckToken(w http.ResponseWriter, r *http.Request) bool {
+/*
+  Checks if a token is valid
+*/
+func CheckToken(w http.ResponseWriter, r *http.Request, requestToken string) bool {
   session, _ := sessionStore.Get(r, "token")
-
   session.Options = &sessions.Options{
       Path:     "/",
       MaxAge:   60 * 60 * 2,
       HttpOnly: true,
   }
+
   if session.Values["tokens"] != nil {
     t := session.Values["tokens"].(Tokens)
-
-    for _, tok := range t.T {
-      fmt.Print(int64(time.Since(tok.Created)) > int64(math.Pow(10, 9) * 60 * 20))
+    fmt.Println(len(t.T))
+    for id, tok := range t.T {
+      // Removed tokens that are older than 30 minutes
+      if int64(time.Since(tok.Created)) > int64(math.Pow(10, 9) * 60 * 30) {
+        t.T[id] = t.T[len(t.T)-1]
+        t.T = t.T[0:len(t.T)-1]
+        session.Values["tokens"] = t
+        session.Save(r, w)
+      }
+      if tok.Hash == requestToken {
+        t.T[id] = t.T[len(t.T)-1]
+        t.T = t.T[0:len(t.T)-1]
+        session.Values["tokens"] = t
+        session.Save(r, w)
+        return true
+      }
     }
-    return true
   }
   return false
+}
+
+
+
+/*
+  Returns a random hash
+*/
+func randomHash() string {
+  // Number of random bytes to generate
+  n := 500
+  b := make([]byte, n)
+
+  // Read in from random
+  _, err := rand.Read(b)
+
+  // Check error
+  if err != nil {
+    fmt.Println("Error:", err)
+    return ""
+  }
+
+  // Generate sha512 hash
+  hash := sha512.New()
+  hash.Write(b)
+
+  return hex.EncodeToString(hash.Sum(nil))
 }
