@@ -31,13 +31,8 @@ type Tokens struct {
 func GetToken(w http.ResponseWriter, r *http.Request) string {
   gob.Register(Tokens{})
 
-  session, _ := sessionStore.Get(r, "token")
-  session.Options = &sessions.Options{
-      Path:     "/",
-      MaxAge:   60 * 60 * 2,
-      HttpOnly: true,
-  }
-
+  session := getSession(w, r)
+  token := randomHash()
   var t Tokens
   if session.Values["tokens"] == nil {
     a := make([]Token, 1)
@@ -64,12 +59,7 @@ func GetToken(w http.ResponseWriter, r *http.Request) string {
   Checks if a token is valid
 */
 func CheckToken(w http.ResponseWriter, r *http.Request, requestToken string) bool {
-  session, _ := sessionStore.Get(r, "token")
-  session.Options = &sessions.Options{
-      Path:     "/",
-      MaxAge:   60 * 60 * 2,
-      HttpOnly: true,
-  }
+  session := getSession(w, r)
 
   if session.Values["tokens"] != nil {
     t := session.Values["tokens"].(Tokens)
@@ -77,16 +67,11 @@ func CheckToken(w http.ResponseWriter, r *http.Request, requestToken string) boo
     for id, tok := range t.T {
       // Removed tokens that are older than 30 minutes
       if int64(time.Since(tok.Created)) > int64(math.Pow(10, 9) * 60 * 30) {
-        t.T[id] = t.T[len(t.T)-1]
-        t.T = t.T[0:len(t.T)-1]
-        session.Values["tokens"] = t
-        session.Save(r, w)
+        deleteToken(w, r, id)
       }
+      // If there is a match return truw
       if tok.Hash == requestToken {
-        t.T[id] = t.T[len(t.T)-1]
-        t.T = t.T[0:len(t.T)-1]
-        session.Values["tokens"] = t
-        session.Save(r, w)
+        deleteToken(w, r, id)
         return true
       }
     }
@@ -95,6 +80,17 @@ func CheckToken(w http.ResponseWriter, r *http.Request, requestToken string) boo
 }
 
 
+/*
+  Deletes a token from the session (Given a session array id)
+*/
+func deleteToken(w http.ResponseWriter, r *http.Request, id int) {
+  session := getSession(w, r)
+  t := session.Values["tokens"].(Tokens)
+  t.T[id] = t.T[len(t.T)-1]
+  t.T = t.T[0:len(t.T)-1]
+  session.Values["tokens"] = t
+  session.Save(r, w)
+}
 
 /*
   Returns a random hash
@@ -118,4 +114,20 @@ func randomHash() string {
   hash.Write(b)
 
   return hex.EncodeToString(hash.Sum(nil))
+}
+
+
+
+
+/*
+  Gets the token session
+*/
+func getSession(w http.ResponseWriter, r *http.Request) *sessions.Session {
+  session, _ := sessionStore.Get(r, "token")
+  session.Options = &sessions.Options{
+      Path:     "/",
+      MaxAge:   60 * 60 * 2,
+      HttpOnly: true,
+  }
+  return session
 }
