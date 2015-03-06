@@ -13,7 +13,7 @@ import (
   "math"
 )
 
-var sessionStore = sessions.NewCookieStore([]byte("a1c72f9a30f2111c59fb331f07517211a730b3fdc7d9cc77a5c698043caefb7f9ff18039dec03935838ccd1a7985cefe48e3c14043d4ca2"))
+
 
 type Token struct {
   Hash string
@@ -24,6 +24,24 @@ type Tokens struct {
   T []Token
 }
 
+type Config struct {
+  sessionName string
+  maxAge int
+  entropy int
+}
+
+var sessionStore *sessions.FilesystemStore
+var config Config
+
+
+func Init(sessionName string, maxAge int) {
+  // Initialise with a random key
+  sessionStore = sessions.NewFilesystemStore("", []byte(RandomHash()))
+  config.sessionName = sessionName
+  config.maxAge = maxAge
+  config.entropy = 500
+}
+
 
 /*
   Generates a random token
@@ -32,7 +50,7 @@ func GetToken(w http.ResponseWriter, r *http.Request) string {
   gob.Register(Tokens{})
 
   session := getSession(w, r)
-  token := randomHash()
+  token := RandomHash()
   var t Tokens
   if session.Values["tokens"] == nil {
     a := make([]Token, 1)
@@ -63,10 +81,9 @@ func CheckToken(w http.ResponseWriter, r *http.Request, requestToken string) boo
 
   if session.Values["tokens"] != nil {
     t := session.Values["tokens"].(Tokens)
-    fmt.Println(len(t.T))
     for id, tok := range t.T {
       // Removed tokens that are older than 30 minutes
-      if int64(time.Since(tok.Created)) > int64(math.Pow(10, 9) * 60 * 30) {
+      if int64(time.Since(tok.Created)) > (int64(math.Pow(10, 9)) * int64(config.maxAge)) {
         deleteToken(w, r, id)
       }
       // If there is a match return truw
@@ -86,6 +103,10 @@ func CheckToken(w http.ResponseWriter, r *http.Request, requestToken string) boo
 func deleteToken(w http.ResponseWriter, r *http.Request, id int) {
   session := getSession(w, r)
   t := session.Values["tokens"].(Tokens)
+  /*fmt.Print("::: ")
+  fmt.Print(id)
+  fmt.Print(" - ")
+  fmt.Println(len(t.T))*/
   t.T[id] = t.T[len(t.T)-1]
   t.T = t.T[0:len(t.T)-1]
   session.Values["tokens"] = t
@@ -95,10 +116,9 @@ func deleteToken(w http.ResponseWriter, r *http.Request, id int) {
 /*
   Returns a random hash
 */
-func randomHash() string {
-  // Number of random bytes to generate
-  n := 500
-  b := make([]byte, n)
+func RandomHash() string {
+  // Generate array of bytes
+  b := make([]byte, config.entropy)
 
   // Read in from random
   _, err := rand.Read(b)
@@ -123,10 +143,10 @@ func randomHash() string {
   Gets the token session
 */
 func getSession(w http.ResponseWriter, r *http.Request) *sessions.Session {
-  session, _ := sessionStore.Get(r, "token")
+  session, _ := sessionStore.Get(r, config.sessionName)
   session.Options = &sessions.Options{
       Path:     "/",
-      MaxAge:   60 * 60 * 2,
+      MaxAge:   60 * config.maxAge,
       HttpOnly: true,
   }
   return session
