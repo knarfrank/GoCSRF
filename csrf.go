@@ -103,14 +103,12 @@ func CheckToken(w http.ResponseWriter, r *http.Request, requestToken string) boo
 func deleteToken(w http.ResponseWriter, r *http.Request, id int) {
   session := getSession(w, r)
   t := session.Values["tokens"].(Tokens)
-  /*fmt.Print("::: ")
-  fmt.Print(id)
-  fmt.Print(" - ")
-  fmt.Println(len(t.T))*/
-  t.T[id] = t.T[len(t.T)-1]
-  t.T = t.T[0:len(t.T)-1]
-  session.Values["tokens"] = t
-  session.Save(r, w)
+  if id <= len(t.T) {
+    t.T[id] = t.T[len(t.T)-1]
+    t.T = t.T[0:len(t.T)-1]
+    session.Values["tokens"] = t
+    session.Save(r, w)
+  }
 }
 
 /*
